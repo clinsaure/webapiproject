@@ -7,6 +7,11 @@ using WebApiProject.Authentication;
 using WebApiProject.DataService.Data;
 using WebApiProject.DataService.IConfiguration;
 using System.Text;
+using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.Filters;
+using WebApiProject.Api.Services;
+using WatchDog;
+using WatchDog.src.Enums;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +27,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Add dependency injection for UnitOfWork
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+// Add dependency injection for EmailService
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Enable Api Version
 builder.Services.AddApiVersioning(opt =>
@@ -34,6 +41,20 @@ builder.Services.AddApiVersioning(opt =>
     opt.DefaultApiVersion = ApiVersion.Default;
 });
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
+    {
+        Description = "Standard Authorization header using the Bearer scheme (\"bearer {token}\")",
+        In = ParameterLocation.Header,
+        Name = "Authorization",
+        Type = SecuritySchemeType.ApiKey
+    });
+
+    options.OperationFilter<SecurityRequirementsOperationFilter>();
+});
+
 // Gettings the secret from the config
 var key = Encoding.ASCII.GetBytes(builder.Configuration["JwtConfig:Secret"]);
 
@@ -41,10 +62,11 @@ var tokenValidationParameters = new TokenValidationParameters
 {
     ValidateIssuerSigningKey = true,
     IssuerSigningKey = new SymmetricSecurityKey(key),
-    ValidateIssuer = false, // ToDo Update
-    ValidateAudience = false, //  ToDo Update
-    RequireExpirationTime = false, // ToDo Update
+    ValidateIssuer = false, // for dev, ToDo Update
+    ValidateAudience = false, // for dev, ToDo Update
+    RequireExpirationTime = false, // for dev, ToDo Update
     ValidateLifetime = true,
+    ClockSkew = TimeSpan.Zero,
 };
 
 // Injection into our DI container
@@ -62,6 +84,12 @@ builder.Services.AddAuthentication(option =>
         jwt.TokenValidationParameters = tokenValidationParameters;
     });
 
+builder.Services.AddCors(options => options.AddPolicy(name: "NgOrigins",
+    policy =>
+    {
+        policy.WithOrigins("http://localhost:44316").AllowAnyMethod().AllowAnyHeader();
+    }));
+
 builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
     .AddEntityFrameworkStores<AppDbContext>();
 
@@ -70,16 +98,25 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
+builder.Services.AddWatchDogServices(opt =>
+{
+    opt.IsAutoClear = false;// true;
+    //opt.ClearTimeSchedule = WatchDog.src.Enums.WatchDogAutoClearScheduleEnum.Weekly;
+    opt.SetExternalDbConnString = builder.Configuration.GetConnectionString("WebApiDBConnection");
+    opt.SqlDriverOption = WatchDogSqlDriverEnum.MSSQL;
+});
+
 // Builds the web application
 var app = builder.Build();
 
-if(app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
     app.UseSwagger();
-    //app.UseSwaggerUI();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "WebApiProject.Api v1"));
+    app.UseSwaggerUI();
 }
+
+app.UseCors("NgOrigins");
 
 app.UseHttpsRedirection();
 
@@ -87,5 +124,14 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// inject into the middleware
+app.UseWatchDogExceptionLogger();
+
+app.UseWatchDog(opt =>
+{
+    opt.WatchPageUsername = "admin";
+    opt.WatchPagePassword = "Admin123";
+});
 
 app.Run();

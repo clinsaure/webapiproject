@@ -10,6 +10,7 @@ namespace WebApiProject.DataService.IRepositories;
 public interface IUsersRepository : IGenericRepository<User>
 {
     Task<bool> UpdateUserProfile(User user);
+    Task<bool> UpdateUserStatus(Guid identityId);
     Task<User> GetByIdentityId(Guid identityId);
 }
 

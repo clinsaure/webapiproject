@@ -3,9 +3,6 @@ using WebApiProject.DataService.IConfiguration;
 using WebApiProject.DataService.IRepositories;
 using WebApiProject.DataService.Repositories;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace WebApiProject.DataService.Data;

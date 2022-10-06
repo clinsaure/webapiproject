@@ -14,6 +14,11 @@ using System.Threading.Tasks;
 using WebApiProject.Entities.Dtos.Generic;
 using WebApiProject.Configuration.Messages;
 using AutoMapper;
+using System.Net.Mail;
+using SendGrid;
+using SendGrid.Helpers.Mail;
+using WebApiProject.DataService.Repositories;
+using WatchDog;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -27,8 +32,8 @@ public class UsersController : BaseController
     public UsersController(
         IMapper mapper,
         ILogger<UsersController> logger,
-        IUnitOfWork unitOfWork, 
-        UserManager<IdentityUser> userManager) : base(mapper,unitOfWork, userManager)
+        IUnitOfWork unitOfWork,
+        UserManager<IdentityUser> userManager) : base(mapper, unitOfWork, userManager)
     {
         _logger = logger;
     }
@@ -43,12 +48,14 @@ public class UsersController : BaseController
             Content = users.ToList(),
             ResultCount = users.Count()
         };
+
+        WatchLogger.Log("{Controller} All Users");
         return Ok(result);
     }
 
     // GET api/<UsersController>/5
     [HttpGet("{id}")]
-    [Route("", Name = "GetUser")]
+    //[Route("v1", Name = "GetUser")]
     public async Task<IActionResult> Get(Guid id)
     {
         var user = await _unitOfWork.Users.GetById(id);
@@ -105,4 +112,5 @@ public class UsersController : BaseController
     public void Delete(int id)
     {
     }
+
 }

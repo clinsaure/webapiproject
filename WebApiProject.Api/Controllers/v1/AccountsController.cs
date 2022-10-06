@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -9,14 +8,12 @@ using WebApiProject.Authentication.Models.DTO.Incoming;
 using WebApiProject.Authentication.Models.DTO.Outgoing;
 using WebApiProject.DataService.IConfiguration;
 using WebApiProject.Entities.DbSet;
-using System;
-using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Security.Claims;
 using System.Text;
-using System.Threading.Tasks;
 using AutoMapper;
+using WebApiProject.Api.Services;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace WebApiProject.Api.Controllers.v1;
 public class AccountsController : BaseController
@@ -24,19 +21,26 @@ public class AccountsController : BaseController
 
     private readonly TokenValidationParameters _tokenValidationParameters;
     private readonly JwtConfig _jwtConfig;
+    private readonly IEmailService _emailService;
 
     public AccountsController(
         IMapper mapper,
         TokenValidationParameters tokenValidationParameters,
         IOptionsMonitor<JwtConfig> optionsMonitor,
+        IEmailService emailService,
         IUnitOfWork unitOfWork, 
         UserManager<IdentityUser> userManager) : base(mapper,unitOfWork, userManager)
     {
-        //_userManager = userManager;
         _jwtConfig = optionsMonitor.CurrentValue;
         _tokenValidationParameters = tokenValidationParameters;
+        _emailService = emailService;
     }
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="registrationDto"></param>
+    /// <returns></returns>
     // Register Action
     [HttpPost]
     [Route("Register")]
@@ -66,44 +70,64 @@ public class AccountsController : BaseController
             {
                 Email = registrationDto.Email,
                 UserName = registrationDto.Email,
-                EmailConfirmed = true // ToDo Build
+                EmailConfirmed = false //true // ToDo Build
             };
 
             var isCreated = await _userManager.CreateAsync(newUser, registrationDto.Password);
-            if (!isCreated.Succeeded) // when the registration has failed
+
+            if (isCreated.Succeeded) // when the registration has failed
             {
-                return BadRequest(new UserRegistrationResponseDto()
+
+                // Adding user to the database
+                var _user = new User
                 {
-                    IsSuccess = isCreated.Succeeded,
-                    Errors = isCreated.Errors.Select(x => x.Description).ToList()
-                });
+                    IdentityId = new Guid(newUser.Id),
+                    FirstName = registrationDto.FirstName,
+                    LastName = registrationDto.LastName,
+                    Email = registrationDto.Email,
+                    DateOfBirth = DateTime.UtcNow,
+                    PhoneNumber = "",
+                    Country = "",
+                    Status = 0
+                };
+
+                await _unitOfWork.Users.Add(_user);
+                await _unitOfWork.CompleteAsync();
+
+                // Create a jwt token
+                var token = await GenerateJwtToken(newUser);
+
+                var confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(newUser);
+
+                var encodeEmailToken = Encoding.UTF8.GetBytes(confirmToken);
+                var validEmailToken = WebEncoders.Base64UrlEncode(encodeEmailToken);
+
+                var email_body = "Please confirm your email adress <a href=\"#URL#\">Click here";
+
+                //var confirmationLink = Url.Action(nameof(ConfirmEmail), controller: "/api/v1/Accounts",
+                //    values: new { userId = newUser.Id, token = validEmailToken });
+
+                var confirmationLink = $"/api/v1/Accounts/ConfirmEmail?userId={newUser.Id}&token={validEmailToken}";
+
+                var callback_url = Request.Scheme + "://" + Request.Host + confirmationLink;
+
+                //var body = email_body.Replace("#URL#", System.Text.Encodings.Web.HtmlEncoder.Default.Encode(callback_url));
+                var bodyMessage = email_body.Replace("#URL#", callback_url);
+
+                // SEND EMAIL
+                var bodySubject = "Confirm the Email Adress";
+                var result = await _emailService.SendEMailAsync(newUser.Email, bodySubject, bodyMessage);
+
+                if (result.IsSuccessStatusCode)
+                    return Ok("Please verify your email, through the verification email we have just sent.");
+
+                return Ok("Please request an email verification Link");               
             }
 
-            // Adding user to the database
-            var _user = new User
+            return BadRequest(new UserRegistrationResponseDto()
             {
-                IdentityId = new Guid(newUser.Id),
-                FirstName = registrationDto.FirstName,
-                LastName = registrationDto.LastName,
-                Email = registrationDto.Email,
-                DateOfBirth = DateTime.UtcNow,
-                PhoneNumber = "",
-                Country = "",
-                Status = 1
-            };
-
-            await _unitOfWork.Users.Add(_user);
-            await _unitOfWork.CompleteAsync();
-
-            // Create a jwt token
-            var token = await GenerateJwtToken(newUser);
-
-            // return back to user
-            return Ok(new UserRegistrationResponseDto()
-            {
-                IsSuccess = true,
-                Token = token.JwtToken,
-                RefreshToken = token.RefreshToken,
+                IsSuccess = isCreated.Succeeded,
+                Errors = isCreated.Errors.Select(x => x.Description).ToList()
             });
         }
         else // Invalid Object
@@ -118,6 +142,47 @@ public class AccountsController : BaseController
             });
         }
 
+    }
+
+    [HttpGet("ConfirmEmail")]
+    public async Task<IActionResult> ConfirmEmail(string userId, string token)
+    {
+        if(userId == null || token == null)
+        {
+            return BadRequest(new UserRegistrationResponseDto()
+            {
+                IsSuccess = false,
+                Errors = new List<string> { "invalid email confirmation url" }
+            });
+        }
+
+        var user = await _userManager.FindByIdAsync(userId);
+
+        if(user == null)
+        {
+            return BadRequest(new UserRegistrationResponseDto()
+            {
+                IsSuccess = false,
+                Errors = new List<string> { "invalid email parameters" }
+            });
+        }
+
+
+
+        token = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var result = await _userManager.ConfirmEmailAsync(user, token);
+
+        if (result.Succeeded)
+        {
+            await _unitOfWork.Users.UpdateUserStatus(new Guid(user.Id));
+            await _unitOfWork.CompleteAsync();
+        }
+
+        var status = result.Succeeded
+            ? "Thank you for confirming your email"
+            : "Your email is not confirmed, please try again later";
+
+        return Ok(status);
     }
 
     [HttpPost]
@@ -140,6 +205,16 @@ public class AccountsController : BaseController
                         }
                 });
             }
+
+            if (!userExist.EmailConfirmed)
+                return BadRequest(new UserLoginResponseDto()
+                {
+                    IsSuccess = false,
+                    Errors = new List<string>()
+                        {
+                            "Email needs to be confirmed"
+                        }
+                });
 
             // 2 - Check if the user has a valid password
             var isCorrect = await _userManager.CheckPasswordAsync(userExist, loginDto.Password);
@@ -402,7 +477,8 @@ public class AccountsController : BaseController
                     new Claim(ClaimTypes.NameIdentifier, user.Id),
                     new Claim(JwtRegisteredClaimNames.Sub, user.Email), // unique id
                     new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()) // used by the refreshtoken
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()), // used by the refreshtoken
+                    //new Claim(JwtRegisteredClaimNames.Iat, DateTime.Now.ToUniversalTime().ToString())
                 }),
             Expires = DateTime.UtcNow.Add(_jwtConfig.ExpiryTimeFrame), // ToDo update the expiration time to minutes
             SigningCredentials = new SigningCredentials(
@@ -449,5 +525,4 @@ public class AccountsController : BaseController
         return new string(Enumerable.Repeat(chars, length)
             .Select(s => s[random.Next(s.Length)]).ToArray());
     }
-
 }
