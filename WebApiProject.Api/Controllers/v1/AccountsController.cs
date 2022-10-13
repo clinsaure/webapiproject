@@ -299,8 +299,11 @@ public class AccountsController : BaseController
 
         try
         {
+            var tokenValidationParameters = _tokenValidationParameters.Clone();
+            tokenValidationParameters.ValidateLifetime = false;
+
             // we need to check the validity of the token
-            var principal = tokenHandler.ValidateToken(tokenRequestDto.Token, _tokenValidationParameters, out var validatedToken);
+            var principal = tokenHandler.ValidateToken(tokenRequestDto.Token, tokenValidationParameters, out var validatedToken);
 
             // We need to validate the results that has been generated for us
             // Validate if the string is an actual JWT token not a random string
