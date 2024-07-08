@@ -1,23 +1,10 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using WebApiProject.DataService.Data;
-using WebApiProject.DataService.IConfiguration;
 using WebApiProject.Entities.DbSet;
 using WebApiProject.Entities.Dtos.Incoming;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using WebApiProject.Entities.Dtos.Generic;
 using WebApiProject.Configuration.Messages;
-using AutoMapper;
-using System.Net.Mail;
-using SendGrid;
-using SendGrid.Helpers.Mail;
-using WebApiProject.DataService.Repositories;
 using WatchDog;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
@@ -25,24 +12,19 @@ using WatchDog;
 namespace WebApiProject.Api.Controllers.v1;
 
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-public class UsersController : BaseController
+public class UsersController : BaseController<UsersController>
 {
-    private readonly ILogger<UsersController> _logger;
+    //private readonly ILogger<UsersController> _logger;
 
-    public UsersController(
-        IMapper mapper,
-        ILogger<UsersController> logger,
-        IUnitOfWork unitOfWork,
-        UserManager<IdentityUser> userManager) : base(mapper, unitOfWork, userManager)
-    {
-        _logger = logger;
-    }
+    //public UsersController()
+    //{
+    //}
 
     // GET: api/<UsersController>
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        var users = await _unitOfWork.Users.All();
+        var users = await UnitOfWork.Users.All();
         var result = new PagedResult<User>
         {
             Content = users.ToList(),
@@ -58,7 +40,7 @@ public class UsersController : BaseController
     //[Route("v1", Name = "GetUser")]
     public async Task<IActionResult> Get(Guid id)
     {
-        var user = await _unitOfWork.Users.GetById(id);
+        var user = await UnitOfWork.Users.GetById(id);
         var result = new Result<User>();
         if (user != null)
         {
@@ -77,7 +59,7 @@ public class UsersController : BaseController
     [HttpPost]
     public async Task<IActionResult> Post([FromBody] UserDto user)
     {
-        var _mappedUser = _mapper.Map<User>(user);
+        var _mappedUser = Mapper.Map<User>(user);
 
         //var _user = new User
         //{
@@ -90,8 +72,8 @@ public class UsersController : BaseController
         //    Status = 1
         //};
 
-        await _unitOfWork.Users.Add(_mappedUser);
-        await _unitOfWork.CompleteAsync();
+        await UnitOfWork.Users.Add(_mappedUser);
+        await UnitOfWork.CompleteAsync();
 
         var result = new Result<UserDto>
         {

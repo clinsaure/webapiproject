@@ -1,13 +1,6 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using WebApiProject.DataService.IConfiguration;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using WebApiProject.Entities.Dtos.Errors;
 using AutoMapper;
 
@@ -17,18 +10,28 @@ namespace WebApiProject.Api.Controllers.v1;
 [Route("api/v{version:apiVersion}/[controller]")]
 [ApiController]
 [ApiVersion("1.0")]
-public class BaseController : ControllerBase
+public class BaseController<T> : ControllerBase where T : BaseController<T>
 {
-    public IUnitOfWork _unitOfWork;
-    public UserManager<IdentityUser> _userManager;
-    public readonly IMapper _mapper;
+    private ILogger<T>? _logger;
+    private IUnitOfWork? _unitOfWork;
+    private UserManager<IdentityUser>? _userManager;
+    private IMapper? _mapper;
 
-    public BaseController(IMapper mapper, IUnitOfWork unitOfWork, UserManager<IdentityUser> userManager)
-    {
-        _mapper = mapper;
-        _unitOfWork = unitOfWork;
-        _userManager = userManager;
-    }
+    protected ILogger<T> Logger
+           => _logger ??= HttpContext.RequestServices.GetRequiredService<ILogger<T>>();
+    protected IUnitOfWork UnitOfWork
+        => _unitOfWork ??= HttpContext.RequestServices.GetRequiredService<IUnitOfWork>();
+    protected IMapper Mapper
+        => _mapper ??= HttpContext.RequestServices.GetRequiredService<IMapper>();
+    protected UserManager<IdentityUser> UserManager
+        => _userManager ??= HttpContext.RequestServices.GetRequiredService<UserManager<IdentityUser>>();
+
+    //public BaseController(IMapper mapper, IUnitOfWork unitOfWork, UserManager<IdentityUser> userManager)
+    //{
+    //    _mapper = mapper;
+    //    _unitOfWork = unitOfWork;
+    //    _userManager = userManager;
+    //}
 
     internal Error PopulateError(int code, string message, string type)
     {

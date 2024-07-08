@@ -11,7 +11,6 @@ using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.Filters;
 using WebApiProject.Api.Services;
 using WatchDog;
-using WatchDog.src.Enums;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -101,9 +100,9 @@ builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 builder.Services.AddWatchDogServices(opt =>
 {
     opt.IsAutoClear = false;// true;
-    //opt.ClearTimeSchedule = WatchDog.src.Enums.WatchDogAutoClearScheduleEnum.Weekly;
+    //opt.ClearTimeSchedule = WatchDog.src.Enums.WatchDogAutoClearScheduleEnum.Monthly;
     opt.SetExternalDbConnString = builder.Configuration.GetConnectionString("WebApiDBConnection");
-    opt.SqlDriverOption = WatchDogSqlDriverEnum.MSSQL;
+    opt.DbDriverOption = WatchDog.src.Enums.WatchDogDbDriverEnum.MSSQL;
 });
 
 // Builds the web application

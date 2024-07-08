@@ -16,20 +16,17 @@ using WebApiProject.Api.Services;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace WebApiProject.Api.Controllers.v1;
-public class AccountsController : BaseController
+public class AccountsController : BaseController<AccountsController>
 {
 
     private readonly TokenValidationParameters _tokenValidationParameters;
     private readonly JwtConfig _jwtConfig;
     private readonly IEmailService _emailService;
 
-    public AccountsController(
-        IMapper mapper,
+    public AccountsController(        
         TokenValidationParameters tokenValidationParameters,
         IOptionsMonitor<JwtConfig> optionsMonitor,
-        IEmailService emailService,
-        IUnitOfWork unitOfWork, 
-        UserManager<IdentityUser> userManager) : base(mapper,unitOfWork, userManager)
+        IEmailService emailService)
     {
         _jwtConfig = optionsMonitor.CurrentValue;
         _tokenValidationParameters = tokenValidationParameters;
@@ -51,7 +48,7 @@ public class AccountsController : BaseController
         if (ModelState.IsValid)
         {
             // Check if the email already exist
-            var userExist = await _userManager.FindByEmailAsync(registrationDto.Email);
+            var userExist = await UserManager.FindByEmailAsync(registrationDto.Email);
 
             if (userExist != null) // email is already in the table
             {
@@ -73,7 +70,7 @@ public class AccountsController : BaseController
                 EmailConfirmed = false //true // ToDo Build
             };
 
-            var isCreated = await _userManager.CreateAsync(newUser, registrationDto.Password);
+            var isCreated = await UserManager.CreateAsync(newUser, registrationDto.Password);
 
             if (isCreated.Succeeded) // when the registration has failed
             {
@@ -91,13 +88,13 @@ public class AccountsController : BaseController
                     Status = 0
                 };
 
-                await _unitOfWork.Users.Add(_user);
-                await _unitOfWork.CompleteAsync();
+                await UnitOfWork.Users.Add(_user);
+                await UnitOfWork.CompleteAsync();
 
                 // Create a jwt token
                 var token = await GenerateJwtToken(newUser);
 
-                var confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(newUser);
+                var confirmToken = await UserManager.GenerateEmailConfirmationTokenAsync(newUser);
 
                 var encodeEmailToken = Encoding.UTF8.GetBytes(confirmToken);
                 var validEmailToken = WebEncoders.Base64UrlEncode(encodeEmailToken);
@@ -156,7 +153,7 @@ public class AccountsController : BaseController
             });
         }
 
-        var user = await _userManager.FindByIdAsync(userId);
+        var user = await UserManager.FindByIdAsync(userId);
 
         if(user == null)
         {
@@ -170,12 +167,12 @@ public class AccountsController : BaseController
 
 
         token = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var result = await _userManager.ConfirmEmailAsync(user, token);
+        var result = await UserManager.ConfirmEmailAsync(user, token);
 
         if (result.Succeeded)
         {
-            await _unitOfWork.Users.UpdateUserStatus(new Guid(user.Id));
-            await _unitOfWork.CompleteAsync();
+            await UnitOfWork.Users.UpdateUserStatus(new Guid(user.Id));
+            await UnitOfWork.CompleteAsync();
         }
 
         var status = result.Succeeded
@@ -192,7 +189,7 @@ public class AccountsController : BaseController
         if (ModelState.IsValid)
         {
             // 1 - Check if email exist
-            var userExist = await _userManager.FindByEmailAsync(loginDto.Email);
+            var userExist = await UserManager.FindByEmailAsync(loginDto.Email);
 
             if (userExist == null)
             {
@@ -217,7 +214,7 @@ public class AccountsController : BaseController
                 });
 
             // 2 - Check if the user has a valid password
-            var isCorrect = await _userManager.CheckPasswordAsync(userExist, loginDto.Password);
+            var isCorrect = await UserManager.CheckPasswordAsync(userExist, loginDto.Password);
 
             if (isCorrect)
             {
@@ -336,7 +333,7 @@ public class AccountsController : BaseController
             }
 
             // check if the refresh token exist
-            var refreshTokenExist = await _unitOfWork.RefreshTokens.GetByRefreshToken(tokenRequestDto.RefreshToken);
+            var refreshTokenExist = await UnitOfWork.RefreshTokens.GetByRefreshToken(tokenRequestDto.RefreshToken);
 
             if (refreshTokenExist == null)
             {
@@ -407,13 +404,13 @@ public class AccountsController : BaseController
             // Start processing and get a new token
             refreshTokenExist.IsUsed = true;
 
-            var updateResult = await _unitOfWork.RefreshTokens.MarkRefreshTokenAsUsed(refreshTokenExist);
+            var updateResult = await UnitOfWork.RefreshTokens.MarkRefreshTokenAsUsed(refreshTokenExist);
             if (updateResult)
             {
-                await _unitOfWork.CompleteAsync();
+                await UnitOfWork.CompleteAsync();
 
                 // Get the user to generate a new jwt token
-                var dbUser = await _userManager.FindByIdAsync(refreshTokenExist.UserId);
+                var dbUser = await UserManager.FindByIdAsync(refreshTokenExist.UserId);
 
                 if (dbUser == null)
                 {
@@ -508,8 +505,8 @@ public class AccountsController : BaseController
             ExpiryDate = DateTime.UtcNow.AddMonths(6),
         };
 
-        await _unitOfWork.RefreshTokens.Add(refreshToken);
-        await _unitOfWork.CompleteAsync();
+        await UnitOfWork.RefreshTokens.Add(refreshToken);
+        await UnitOfWork.CompleteAsync();
 
         var tokenData = new TokenData
         {
